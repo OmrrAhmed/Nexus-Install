@@ -1,0 +1,168 @@
+    - name: apt update
+      apt:
+        update_cache: yes
+      
+    #install openjdk
+    - name: install openjdk-8-jdk
+      apt:
+        name: openjdk-8-jdk
+        state: present
+
+    #Get java version
+    - name: Run Command Ls
+      command: "java -version"
+      register: results
+
+    #print output java version
+    - name: Print Reuslts
+      debug:
+        var: results
+
+    #Create Nexus User
+    - name: create Nexus user
+      user:
+        name: nexus
+        state: present
+        password: $6$SAktrGy.LJ7QAMib$1Wy76f4hsZJj/9deQZ6z9FwMop8EJ14k/mDilCO4R8JcvWLkS56hzk88YPnbqfjMOSahGcpVZkeh94..dL1wh1
+        home: /opt/nexus
+        shell: /bin/bash
+    
+
+    #creating file and write on it
+    - name: Creating a file with content
+      copy:
+        dest: "/etc/security/limits.d/nexus.conf"
+        content: nexus - nofile 65536
+
+    #Download Nexus Repository
+    - name: Unarchive a file that needs to be downloaded (added in 2.0)
+      unarchive:
+        src: https://download.sonatype.com/nexus/3/nexus-3.41.1-01-unix.tar.gz
+        dest: "{{ unarchive_Nexus }}"
+        remote_src: yes
+
+    #copy file to another directory
+    - name: Move nexus-3.41.1-01
+      copy:
+        src: nexus-3.41.1-01
+        dest: /opt/nexus
+        remote_src: yes
+
+    #copy file to another directory
+    - name: Move sonatype-work
+      copy:
+        src: sonatype-work
+        dest: /opt/sonatype-work
+        remote_src: yes
+
+    #change ownership for the 2 files
+    - name: Change file ownership, group and permissions
+      file:
+        path: "{{ item }}"
+        owner: nexus
+        group: nexus
+        mode: '755'
+      with_items:
+        - /opt/sonatype-work
+        - /opt/nexus
+        - /opt/nexus/nexus-3.41.1-01
+        - /opt/nexus/nexus-3.41.1-01/bin/nexus.rc
+
+
+    #uncomment string in file 
+    - name: uncomunt nexus user
+      replace:
+        path: /opt/nexus/nexus-3.41.1-01/bin/nexus.rc
+        regexp: '#run_as_user=""'
+        replace: 'run_as_user="nexus"'
+
+    #create link
+    - name: Create a symbolic link
+      file:
+        src: /opt/nexus/nexus-3.41.1-01/bin/nexus
+        dest: /etc/init.d/nexus
+        mode: '755'
+        state: link
+
+    #replace nexus.vmoptions file
+    - name: Replace nexus.vmoptions file
+      template:
+        src: nexus.vmoptions
+        dest: /opt/nexus/nexus-3.41.1-01/bin
+
+
+    #uncomment string in file 
+    - name: uncomunt nexus user
+      replace:
+        path: /opt/nexus/nexus-3.41.1-01/etc/nexus-default.properties
+        regexp: 'application-host=0.0.0.0'
+        replace: 'application-host=localhost'
+
+    
+
+    #creating file and write on it
+    - name: Copy Template
+      template:
+        src: nexus.service
+        dest: /etc/systemd/system/
+
+    # Restart nexus service
+    - name: daemon-reload and start nexus service
+      systemd_service:
+        state: started
+        daemon_reload: true
+        name: nexus.service
+
+
+    #Get Nexus Status
+    - name: Run Command Nexus status
+      command: "systemctl status nexus.service"
+      register: results
+
+    #print output Nexus status
+    - name: Print Reuslts
+      debug:
+        var: results
+
+    #install nginx
+    - name: install nginx
+      apt:
+        name: nginx
+        state: present
+
+    # enable nginx service
+    - name: enable nginx service
+      systemd_service:
+        state: started
+        name: nginx
+
+    #creating file and write on it
+    - name: Copy Template
+      template:
+        src: nexus
+        dest: /etc/nginx/sites-available
+      notify: restart nginx
+          
+
+    #create link
+    - name: Create a symbolic link
+      file:
+        src: /etc/nginx/sites-available/nexus
+        dest: /etc/nginx/sites-enabled/nexus
+        owner: nexus
+        group: nexus
+        state: link
+        mode: '755'
+      notify: restart nginx
+
+    #Allow Port 8081
+    #- name: Allow all access to port 8081
+     # ufw:
+      #  rule: allow
+       # port: '8081'
+       # state: "{{ item }}"
+      # with_items:
+      #  - reloaded
+      #  - enabled
+    
+    
